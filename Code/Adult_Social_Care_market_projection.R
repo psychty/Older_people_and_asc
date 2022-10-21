@@ -502,6 +502,9 @@ wsx_projected_table <- wsx_projected_table_b %>%
          Change_2022_2042 = paste0('+', format(`2042 (projected)` - `2022 (projected)`, big.mark = ','), ' (+', round(((`2042 (projected)` - `2022 (projected)`) / `2022 (projected)`)* 100, 1), '%)')) %>% 
   mutate_at(vars("2018 (estimated)", "2020 (estimated)", "2022 (projected)", "2027 (projected)", "2032 (projected)", "2037 (projected)", "2042 (projected)"), ~format(., big.mark = ','))
 
+library(flextable)
+flextable(wsx_projected_table)
+
 # High level projecting number of people of State Pension age, Working age, and the old age dependency ratios
 
 # Long-term subnational population projections are an indication of the future trends in population by age and sex over the next 25 years. They are trend-based projections, which means assumptions for future levels of births, deaths and migration are based on observed levels mainly over the previous five years. They show what the population would be if recent trends continue.
@@ -549,7 +552,7 @@ OADR_df <- wsx_high_level_projections %>%
                values_to = 'Population') %>% 
   mutate(Group = factor(Group, levels = rev(c('State pension age', 'Working age'))))
 
-Area_y = 'Adur'
+#Area_y = 'Adur'
 
 attempt_1_waffle <- OADR_df %>% 
   # filter(Area == Area_y) %>%
@@ -649,20 +652,6 @@ png(paste0(output_directory,'/West Sussex OADR attempt 3.png'),
 print(attempt_3_waffle)
 dev.off()
 
-# Alternative display accounting for population size (iceberg plot)
-
-alt_df <- wsx_high_level_projections %>% 
-  filter(age_group != 'Old age dependency ratio') %>% 
-  select(Area = area_name, Year, Group = age_group, Population)
-
-summary(alt_df$Population/1000)
-
-# Every square would need to represent 1,000 people
-
-
-
-
-
 # Projection variants ####
 # All statistics in this bulletin are from our main (principal) subnational projection. However, we have also published a range of variant projections. These include: a high international migration variant, a low international migration variant, an alternative internal migration variant, a 10-year migration variant
 
@@ -688,10 +677,11 @@ ASCOF_open <- read_csv('https://files.digital.nhs.uk/65/E7A20E/meas-from-asc-of-
 unique(ASCOF_open$Indicator_name)
 
 # Load in assumptions ####
-Assumptions_df <- read_csv('https://raw.githubusercontent.com/psychty/projecting_older_adult_assumptions/main/Data/Assumptions_lookup_2022.csv')
+Assumptions_df <- read_csv('https://raw.githubusercontent.com/psychty/projecting_older_adult_assumptions/main/Data/Assumptions_lookup_2022.csv') %>% 
+  filter(Indicator != 'Dementia')
 
 Local_assumptions <- Assumptions_df %>% 
-  filter(Application == 'Local prevalence applied')
+  filter(Application == 'Local prevalence applied') 
 
 # We have two to get from the census.
 unique(Local_assumptions$Indicator)
@@ -738,9 +728,9 @@ WSx_DC3302 <- nomis_get_data(id = 'NM_674_1',
 
 unique(Assumptions_df$Indicator)
 
-Assumptions_df %>% 
-  write.csv(., paste0(local_directory, '/Assumptions_lookup_2022.csv'),
-            row.names = FALSE)
+# Assumptions_df %>% 
+#   write.csv(., paste0(local_directory, '/Assumptions_lookup_2022.csv'),
+#             row.names = FALSE)
 
 Assumptions_df %>% 
   select(Indicator, Source, Source_year) %>% 
@@ -804,17 +794,180 @@ applied_df_04 <- mye_df %>%
   left_join(assumption_04, by = c('Area','Sex', 'Age_group')) %>% 
   mutate(Estimated_population = Population * Assumption)
 
-unique(Assumptions_df$Indicator)
-
-# TODO deal with the 90 and 95+ assumptions
-
 assumption_05 <- Assumptions_df %>% 
-  filter(Indicator == 'Dementia')
+  filter(Indicator == 'Falls')
 
 applied_df_05 <- mye_df %>% 
   mutate(Type = 'Estimates') %>% 
   bind_rows(wsx_projections) %>% 
   filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
                           '90+ years')) %>% 
-  left_join(assumption_03, by = c('Sex', 'Age_group')) %>% 
+  left_join(assumption_05, by = c('Sex', 'Age_group')) %>% 
   mutate(Estimated_population = Population * Assumption)
+
+assumption_06 <- Assumptions_df %>% 
+  filter(Indicator == 'Falls related hospital admissions')
+
+applied_df_06 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_06, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_07 <- Assumptions_df %>% 
+  filter(Indicator == 'Incontinence (bladder) less than once per week')
+
+applied_df_07 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_07, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_08 <- Assumptions_df %>% 
+  filter(Indicator == 'Incontinence (bladder) at least once per week')
+
+applied_df_08 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_08, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_09 <- Assumptions_df %>% 
+  filter(Indicator == 'Visual Impairment')
+
+applied_df_09 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_09, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_10 <- Assumptions_df %>% 
+  filter(Indicator == 'Some hearing loss')
+
+applied_df_10 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_10, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_11 <- Assumptions_df %>% 
+  filter(Indicator == 'Severe hearing loss')
+
+applied_df_11 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_11, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_12 <- Assumptions_df %>% 
+  filter(Indicator == 'Unable to manage at least one mobility activity')
+
+applied_df_12 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_12, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+assumption_13 <- Assumptions_df %>% 
+  filter(Indicator == 'Long-term limiting disability in unsuitable accommodation')
+
+applied_df_13 <- mye_df %>% 
+  mutate(Type = 'Estimates') %>% 
+  bind_rows(wsx_projections) %>% 
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85-89 years',
+                          '90+ years')) %>% 
+  left_join(assumption_13, by = c('Sex', 'Age_group')) %>% 
+  mutate(Estimated_population = Population * Assumption)
+
+applied_df <- applied_df_01 %>% 
+  bind_rows(applied_df_02) %>% 
+  bind_rows(applied_df_03) %>% 
+  bind_rows(applied_df_04) %>% 
+  bind_rows(applied_df_05) %>% 
+  bind_rows(applied_df_06) %>% 
+  bind_rows(applied_df_07) %>% 
+  bind_rows(applied_df_08) %>% 
+  bind_rows(applied_df_09) %>% 
+  bind_rows(applied_df_10) %>% 
+  bind_rows(applied_df_11) %>% 
+  bind_rows(applied_df_12) %>% 
+  bind_rows(applied_df_13) 
+
+applied_df %>% 
+  group_by(Indicator, Area) %>% 
+  summarise(n()) %>% 
+  View()
+
+overall_applied_population_df_by_year <- applied_df %>% 
+  group_by(Area, Indicator, Year, Application, Source, Source_year, Notes) %>% 
+  summarise(Estimated_population_aged_65_plus = sum(Estimated_population, na.rm = TRUE)) %>% 
+  group_by(Area, Indicator, Application, Source, Source_year, Notes) %>% 
+  mutate(Change_from_previous_year = Estimated_population_aged_65_plus - lag(Estimated_population_aged_65_plus, 1)) %>% 
+  mutate(Estimated_population_aged_65_plus_rounded = round(Estimated_population_aged_65_plus, -1),
+         Change_from_previous_year_rounded = round(Change_from_previous_year, -1)) %>% 
+  ungroup()
+
+overall_applied_table <- overall_applied_population_df_by_year %>% 
+  filter(Year %in% c(2018, 2020, 2022, 2027, 2032, 2037, 2042)) %>%
+  select(Area, Indicator, Year, Estimated_population_aged_65_plus) %>% 
+  mutate(Year = ifelse(Year %in% c(2018, 2020), paste0(Year, ' (estimated)'), paste0(Year, ' (projected)'))) %>% 
+  pivot_wider(names_from = Year,
+              values_from = Estimated_population_aged_65_plus) %>% 
+  mutate(Change_2022_2032 = paste0('+', format(round(`2032 (projected)` - `2022 (projected)`,-1), big.mark = ',', trim = TRUE), ' (+', round(((`2032 (projected)` - `2022 (projected)`) / `2022 (projected)`)* 100, 1), '%)'),
+         Change_2022_2042 = paste0('+', format(round(`2042 (projected)` - `2022 (projected)`, -1), big.mark = ',', trim = TRUE), ' (+', round(((`2042 (projected)` - `2022 (projected)`) / `2022 (projected)`)* 100, 1), '%)')) %>% 
+  mutate_at(vars("2018 (estimated)", "2020 (estimated)", "2022 (projected)", "2027 (projected)", "2032 (projected)", "2037 (projected)", "2042 (projected)"), ~format(round(., -1), big.mark = ','))
+  
+  
+paste0("To derive estimates of what the future population experiencing these events/impairments/disabilities, we have applied a 'best guess' prevalence assumptions from a snapshot in time (based on national academic research and census 2011 data, some of which are fairly old) and applied it to the 'best guess' of what we think the population might look like in the future.")
+
+paste0('These have a long list of caveats, of which some are detailed below.') 
+
+paste0('Prevalence assumptions often come from national studies. These have the benefit of using a large sample of people which renders the prevalence estimates more robust but they do not always reflect the local context of an area (such as any local mitigative interventions or inequalities; with the exception of age and sex). We then apply these assumptions to the projected numbers of people (stratified by age and sex) for an area to indicate the expected number of people with that event/impairment/disability if the same prevalence assumptions applied to area x in year x')
+
+paste0('Population estimates and projections.')
+
+# covid changed this all
+
+# TODO make an infographic explaining how the projections work
+# For example if we are trying to project the number of people needing suport with domestic tasks we take the prevalence assumptions from the Health Survey for England which says 15% and 19% of males and females aged 65-69 respectively are likely to need support with domestic tasks
+
+# Indicator waffles? ####
+
+  filter(Year %in% c(2018, 2020, 2022, 2027, 2032, 2037, 2042)) %>%
+    filter(Group != 'Working age') %>% 
+    ggplot(aes(fill = Group, 
+               values = Population/10)) +
+    geom_waffle(color = "white",
+                n_rows = 10, 
+                flip = TRUE) +
+    labs(title = paste0('Old age dependency ratio; West Sussex Districts & Boroughs'),
+         subtitle = "Each square represents 10 people.",
+         caption = 'The old age dependency ratio is the number of people of State Pension age per 1,000 people of working age.\nEvery area and year is standardised to have the same number of working age people (1,000).\nThis allows us to compare across areas as if they had the same number of people.\nIn Arun, in 2018 there were estimated to be 400 people of State Pension age for every 1,000 population of working age.\nThis is roughly two older people for every five working age people. However, in Crawley, there are far fewer older people,\nrelative to the overall working age population, and the ratio there was 200 per 1,000;\nor one state pension age person for every five working age people.\n\nIn all areas, the ratio is set to increase over the next two decades with Arun and Chichester\nexpected to have one State Pension aged person for every two working aged population.',
+         x = '',
+         y = '' ) +
+    scale_x_discrete() + 
+    scale_y_continuous(labels = NULL,
+                       expand = c(0,0)) +
+    scale_fill_manual(values = c('maroon'),
+                      name = 'Age') +
+    facet_grid(Area ~ Year,
+               space = 'free') +
+    coord_equal(ylim = c(0,9)) +
+    waffle_theme() +
+    guides(fill = guide_legend(nrow = 1))
+  
+  
