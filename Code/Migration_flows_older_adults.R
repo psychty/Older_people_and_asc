@@ -10,7 +10,8 @@
 # this says census data but i cant find it
 # https://www.solihull.gov.uk/sites/default/files/2023-12/Older-People-Internal-Migration.pdf
 
-# year ending 2020 is the latest available data, though is it representative of typical changes due to the covid lockdowns? maybe we need to look at the previous year too.
+# Census 2021 is the latest available data, though is it representative of typical changes due to the covid lockdowns? maybe we need to look at the previous year too.
+
 # two parts zipped folders 
 # https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/migrationwithintheuk/datasets/internalmigrationbyoriginanddestinationlocalauthoritiessexandsingleyearofagedetailedestimatesdataset/yearendingjune2020part1/detailedestimates2020on2021laspt1.zip
 
@@ -23,8 +24,47 @@ install.packages(setdiff(packages, rownames(installed.packages())))
 easypackages::libraries(packages)
 
 local_store <- '~/Repositories/Older_people_and_asc/Data'
+output_store <- '~/Repositories/Older_people_and_asc/Outputs'
 
 local_areas <- c('Adur', 'Arun', 'Chichester', 'Crawley', 'Horsham', 'Mid Sussex', 'Worthing')
+
+
+# Lookup
+
+if(file.exists(paste0(output_store, '/Area_to_region_lookup.csv')) != TRUE){
+MSOA_region <- read_sf('https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/MSOA21_BUA22_LAD22_RGN22_EW_LU_v2/FeatureServer/0/query?outFields=*&where=1%3D1&f=geojson') %>% 
+  st_drop_geometry() %>% 
+  select(MSOA21CD, MSOA21NM, Area_code = LAD22CD, Area_name = LAD22NM, RGN22CD, RGN22NM) %>% 
+  unique()
+
+LAD_UTLA <- read_sf('https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/LTLA21_UTLA21_EW_LU_9bbac05558b74a88bda913ad5bf66917/FeatureServer/0/query?outFields=*&where=1%3D1&f=geojson') %>% 
+  st_drop_geometry() %>% 
+  select(Area_code = LTLA21CD, Area_name = LTLA21NM, UTLA_code = UTLA21CD, UTLA_name = UTLA21NM)
+
+LAD_region <- MSOA_region %>% 
+  select(Area_code, Area_name, RGN22CD, RGN22NM) %>% 
+  left_join(LAD_UTLA, by = c('Area_code', 'Area_name')) %>% 
+  unique() %>% 
+  mutate(UTLA_code = ifelse(Area_name == 'Herefordshire', 'E06000019', ifelse(Area_name == 'Bristol', 'E06000023',ifelse(Area_name == 'Kingston upon Hull', 'E06000010', UTLA_code)))) %>% 
+  mutate(UTLA_name = ifelse(Area_name == 'Herefordshire', 'Herefordshire',ifelse(Area_name == 'Bristol', 'Bristol',ifelse(Area_name == 'Kingston upon Hull', 'Kingston upon Hull', UTLA_name)))) %>% 
+  select(Area_code, Area_name, UTLA_code, UTLA_name, RGN_code = RGN22CD, RGN_name = RGN22NM)
+
+# We have some LTLA and UTLA here in the same dataframe, so lets make one long area_code to region lookup
+area_lookup <- LAD_region %>% 
+  select(Area_code, Area_name, RGN_code, RGN_name) %>% 
+  unique() %>% 
+  bind_rows(
+    LAD_region %>% 
+      select(Area_code = UTLA_code, Area_name = UTLA_name, RGN_code, RGN_name) %>% 
+      unique()
+  ) %>% 
+  unique()
+
+area_lookup %>% 
+  write.csv(., paste0(output_store, '/Area_to_region_lookup.csv'), row.names = FALSE)
+}
+
+area_lookup <- read_csv(paste0(output_store, '/Area_to_region_lookup.csv'))
 
 # https://www.nomisweb.co.uk/sources/census_2021_od
 
@@ -131,7 +171,8 @@ table_1 <- total_table %>%
   flextable()
 
 table_1
-# by age Census 2021 ####
+
+# by age address moves Census 2021 ####
 
 # This dataset provides Census 2021 estimates on all usual residents aged 1 year and over in England and Wales who were living at a different address one year before the Census. The estimates classify people currently resident in each Middle layer Super Output Area (MSOA), or higher area by the MSOA, or higher area in which they were resident in one year before the Census. The estimates are as at Census Day, 21 March 2021. People resident outside of the UK one year before the Census are counted in the category "Outside UK".     
 
@@ -144,19 +185,26 @@ unzip(paste0(local_store, '/Census_origin_destination_migration_age.zip'),
       exdir = local_store)
 }
 
-# Read in ltla_origin_destination df
-ltla_origin_dest_df <- read_csv(paste0(local_store, '/ODMG02EW_LTLA.csv')) %>% 
+# Read in origin_destination df
+origin_dest_df <- read_csv(paste0(local_store, '/ODMG02EW_LTLA.csv')) %>% 
   select(Origin_area_code = "Migrant LTLA one year ago code", Origin_area_name = "Migrant LTLA one year ago label", Area_code = "Lower tier local authorities code", Area_name = "Lower tier local authorities label", Age =  "Age (23 categories) label", Moves = Count) %>% 
+    bind_rows(read_csv(paste0(local_store, '/ODMG02EW_UTLA.csv')) %>% 
+                select(Origin_area_code = "Migrant UTLA one year ago code", Origin_area_name = "Migrant UTLA one year ago label", Area_code = "Upper tier local authorities code", Area_name = "Upper tier local authorities label", Age =  "Age (23 categories) label", Moves = Count)) %>% 
+  unique() %>% # The unitary authorities will be counted twice, so we can remove duplicated rows. 
   mutate(Age_group = factor(ifelse(Age %in% c("Aged 1 to 2 years", "Aged 3 to 4 years"), '1-4 years', ifelse(Age %in% c("Aged 5 to 7 years", "Aged 8 to 9 years"), '5-9 years', ifelse(Age %in% c("Aged 10 to 14 years"), '10-14 years', ifelse(Age %in% c('Aged 15 years', 'Aged 16 to 17 years', 'Aged 18 to 19 years'), '15-19 years', ifelse(Age %in% c('Aged 20 to 24 years'), '20-24 years', ifelse(Age %in% c('Aged 25 to 29 years'), '25-29 years', ifelse(Age %in% c('Aged 30 to 34 years'), '30-34 years', ifelse(Age %in% c('Aged 35 to 39 years'), '35-39 years', ifelse(Age %in% c('Aged 40 to 44 years'), '40-44 years', ifelse(Age %in% c('Aged 45 to 49 years'), '45-49 years', ifelse(Age %in% c('Aged 50 to 54 years'), '50-54 years', ifelse( Age %in% c('Aged 55 to 59 years'), '55-59 years', ifelse(Age %in% c('Aged 60 to 64 years'), '60-64 years', ifelse(Age %in% c('Aged 65 to 69 years'), '65-69 years', ifelse(Age %in% c('Aged 70 to 74 years'), '70-74 years', ifelse(Age %in% c('Aged 75 to 79 years'), '75-79 years', ifelse(Age %in% c('Aged 80 to 84 years'),'80-84 years', ifelse(Age %in% c('Aged 85 years and over'), '85+ years', NA)))))))))))))))))), levels = c('1-4 years', '5-9 years', '10-14 years', '15-19 years', '20-24 years', '25-29 years', '30-34 years', '35-39 years', '40-44 years', '45-49 years', '50-54 years', '55-59 years', '60-64 years', '65-69 years', '70-74 years', '75-79 years', '80-84 years', '85+ years'))) %>% 
   mutate(Age_broad =ifelse(Age %in% c("Aged 1 to 2 years", "Aged 3 to 4 years","Aged 5 to 7 years","Aged 8 to 9 years", "Aged 10 to 14 years",  "Aged 15 years", "Aged 16 to 17 years", "Aged 18 to 19 years", "Aged 20 to 24 years", "Aged 25 to 29 years", "Aged 30 to 34 years", "Aged 35 to 39 years", "Aged 40 to 44 years", "Aged 45 to 49 years", "Aged 50 to 54 years", "Aged 55 to 59 years", "Aged 60 to 64 years"), '1-64 years', ifelse(Age %in% c('Aged 65 to 69 years', 'Aged 70 to 74 years', 'Aged 75 to 79 years', 'Aged 80 to 84 years', 'Aged 85 years and over'), '65+ years',  NA))) %>% 
-  mutate(Broad_origin = ifelse(Origin_area_name == 'Does not apply', 'Not moved', ifelse(Origin_area_name == Area_name, 'Moved within LTLA', ifelse(Origin_area_name %in% local_areas, 'Moved from another West Sussex area', 'Moved from elsewhere'))))
+  mutate(Broad_origin = ifelse(Origin_area_name == 'Does not apply', 'Not moved', ifelse(Origin_area_name == Area_name, 'Moved within local authority', ifelse(Origin_area_name %in% local_areas, 'Moved from another West Sussex area', 'Moved from elsewhere')))) %>% 
+  left_join(area_lookup[c('Area_code','Area_name', 'RGN_name')], by = c('Origin_area_name' = 'Area_name', 'Origin_area_code' = 'Area_code')) %>% 
+  rename(Origin_region_name = 'RGN_name') %>% 
+  mutate(Origin_region_name = ifelse(str_detect(Origin_area_code, '^S'), 'Scotland', ifelse(str_detect(Origin_area_code, '^N'), 'Northern Ireland', ifelse(Origin_area_code == '999999999', 'Outside of UK', ifelse(Origin_area_code == '-8', 'Not moved', Origin_region_name))))) %>% 
+  left_join(area_lookup[c('Area_code','Area_name', 'RGN_name')], by = c('Area_name', 'Area_code'))
 
-ltla_age <- ltla_origin_dest_df %>% 
-  group_by(Origin_area_code, Origin_area_name, Area_code, Area_name, Age_group, Broad_origin) %>% 
+moves_age <- origin_dest_df %>% 
+  group_by(Origin_area_code, Origin_area_name, Origin_region_name, Area_code, Area_name, RGN_name, Age_group, Broad_origin) %>% 
   summarise(Moves = sum(Moves)) %>% 
   ungroup()
 
-ltla_broad_age <- ltla_origin_dest_df %>% 
+moves_broad_age <- origin_dest_df %>% 
   group_by(Origin_area_code, Origin_area_name, Area_code, Area_name, Age_broad, Broad_origin) %>% 
   summarise(Moves = sum(Moves)) %>% 
   ungroup()
@@ -164,7 +212,7 @@ ltla_broad_age <- ltla_origin_dest_df %>%
 i = 1
 Area_x = local_areas[i]
 
-area_focus_x <- ltla_origin_dest_df %>% 
+area_focus_x <- origin_dest_df %>% 
   filter(Area_name == Area_x)
 
 area_focus_x %>% 
@@ -182,7 +230,6 @@ census_population_raw_df %>%
   summarise(Population = sum(Population))
 
 # I think this is close enough, the moves counts people aged 1+
-
 area_focus_x %>% 
   filter(Age %in% c('Aged 65 to 69 years', 'Aged 70 to 74 years', 'Aged 75 to 79 years', 'Aged 80 to 84 years', 'Aged 85 years and over')) %>% 
   group_by(Area_name) %>% 
@@ -204,56 +251,116 @@ area_focus_x %>%
   summarise(Moves = sum(Moves)) %>% 
   mutate(Proportion = Moves/sum(Moves))
 
+unique(origin_dest_df$Broad_origin)
+
+# Which Local Authority has the highest number of 65+ moving into the area, from non-neighbouring areas
+
 # generalise this to capture WSx areas
-ltla_origin_dest_df %>% 
-  filter(Area_name %in% local_areas) %>% 
+table_2a <- origin_dest_df %>% 
+  filter(Area_name %in% c(local_areas, 'West Sussex')) %>% 
+  mutate(Area_name = factor(Area_name, levels = c('West Sussex', local_areas))) %>% 
   filter(Broad_origin != 'Not moved') %>% 
-  filter(Broad_origin != 'Moved within LTLA') %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  # filter(Broad_origin != 'Moved from another West Sussex area') %>% 
   group_by(Area_name, Age_broad) %>% 
   summarise(Moves = sum(Moves)) %>% 
   pivot_wider(names_from = 'Age_broad',
               values_from = 'Moves') %>%
   mutate(`Total moves into area` = `1-64 years` + `65+ years`) %>% 
   mutate(Proportion_1_64 = `1-64 years` / `Total moves into area`) %>% 
-  mutate(Proportion_65 = `65+ years` / `Total moves into area`) %>% 
+  mutate(Proportion_65 = `65+ years` / `Total moves into area`)  
+  
+table_2a_flex <- table_2a %>% 
   mutate(`Total moves into area` = paste0(format(`Total moves into area`, big.mark = ',', trim = TRUE))) %>% 
   mutate(`1-64 years` = paste0(format(`1-64 years`, big.mark = ',', trim = TRUE), ' (', round(Proportion_1_64 *100, 1), '%)')) %>% 
   mutate(`65+ years` = paste0(format(`65+ years`, big.mark = ',', trim = TRUE), ' (', round(Proportion_65 *100, 1), '%)')) %>% 
   select(Area = Area_name, `Total moves into area`,`1-64 years`, `65+ years`) %>% 
   flextable()
 
-# This excludes those who moved in the last year but from another address in the same local authority (e.g. inflows capture those becoming a new resident of responsibility for the local authority).
+
+# This excludes those who moved in the last year but from another address in the same local authority (e.g. inflows capture those becoming a new resident of responsibility for the local authority).As you can see, the sum of the number of people moving into each of the lower tier local authority is greater than the number of people moving into West Sussex from outside of the county suggesting that a large number of moves between the local authorities of West Sussex rather than new people into the county.
+
+table_2b <- origin_dest_df %>% 
+  filter(Area_name %in% c(local_areas, 'West Sussex')) %>% 
+  mutate(Area_name = factor(Area_name, levels = c('West Sussex', local_areas))) %>% 
+  filter(Broad_origin != 'Not moved') %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  filter(Broad_origin != 'Moved from another West Sussex area') %>% 
+  group_by(Area_name, Age_broad) %>% 
+  summarise(Moves = sum(Moves)) %>% 
+  pivot_wider(names_from = 'Age_broad',
+              values_from = 'Moves') %>%
+  mutate(`Total moves into area` = `1-64 years` + `65+ years`) %>% 
+  mutate(Proportion_1_64 = `1-64 years` / `Total moves into area`) %>% 
+  mutate(Proportion_65 = `65+ years` / `Total moves into area`)
+
+table_2b_flex <- table_2b %>% 
+  mutate(`Total moves into area` = paste0(format(`Total moves into area`, big.mark = ',', trim = TRUE))) %>% 
+  mutate(`1-64 years` = paste0(format(`1-64 years`, big.mark = ',', trim = TRUE), ' (', round(Proportion_1_64 *100, 1), '%)')) %>% 
+  mutate(`65+ years` = paste0(format(`65+ years`, big.mark = ',', trim = TRUE), ' (', round(Proportion_65 *100, 1), '%)')) %>% 
+  select(Area = Area_name, `Total moves into area`,`1-64 years`, `65+ years`) %>% 
+  flextable()
+
+table_2a %>% 
+  select(Area_name, Moves_2a = 'Total moves into area', Moves_2a_65 = '65+ years') %>% 
+  left_join(table_2b %>% 
+              select(Area_name, Moves_2b = 'Total moves into area', Moves_2b_65 = '65+ years'), by = 'Area_name') %>% 
+  mutate(Proportion_in = (Moves_2a - Moves_2b) / Moves_2a) %>% 
+  mutate(New_to_county = Moves_2a - Moves_2b) %>% 
+  mutate(New_to_county_65 = Moves_2a_65 - Moves_2b_65) %>% 
+  mutate(Proportion_in_65 = (Moves_2a_65 - Moves_2b_65) / Moves_2a_65) %>% 
+  select(Area = Area_name, Moves_2a, Moves_2b, New_to_county, Proportion_in, Moves_2a_65, Moves_2b_65, New_to_county_65, Proportion_in_65)
+
+# Table 2b also excludes moves at lower tier local authority level from other local authorities within West Sussex. Comparing the two tables, you can see that Arun has almost 8,000 moves into the local authority area, with 3,000 (38%) of these coming from outside of West Sussex county. Similarly, Worthing has a total of 5,700 moves into the area (from outside Worthing) in the year leading to Census day 2021; and around 2,000 (34%) of these were from other local authorities in West Sussex. However, for Chichester moves into the local authority from other parts of West Sussex account for just 16% of moves (1,500 of 9,300 moves) and for Crawley it is slightly higher at 17% (980 new to county of 9,300 new to Crawley). Some of the longer distance moves for Chichester might be explained by the university campus and incoming students staying in residential halls or other student accomodation.
+
+# However, for those aged 65 and over, the pattern across the county is the same, and more pronounced. For Worthing, 44% (370 of 660) over 65s moving to the local authority originated outside of West Sussex compared to 18% of over 65s new to Chichester who are also new to West Sussex. 
+
+# Of course, we do not know the history of moves for individuals (some may have lived in West Sussex for most of their lives, gone away and then returned), and we don't know the reasons for moving recently. Nor do we know if family and friends are in place where movers are going to. It is not unreasonable, however, to suggest that for a large number of these movers, they will be going to an area where they do not have established social contacts and crucially informal support for activities of daily living, such as shopping or social support. 
 
 # inflow and outflow by age group
-area_inflow <- ltla_origin_dest_df %>% 
+# Again this excludes people who moved within a local authority, and at West Sussex level
+area_inflow <- origin_dest_df %>% 
   filter(Broad_origin != 'Not moved') %>%
-  filter(Area_name %in% local_areas) %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  filter(Area_name %in% c(local_areas, 'West Sussex')) %>% 
   group_by(Area_name, Age_group) %>% 
   summarise(Inflow = sum(Moves))
 
-area_x_outflow <- ltla_origin_dest_df %>% 
+area_outflow <- origin_dest_df %>% 
   filter(Broad_origin != 'Not moved') %>%
-  filter(Origin_area_name %in% local_areas) %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  filter(Origin_area_name %in% c(local_areas, 'West Sussex')) %>% 
   group_by(Origin_area_name, Age_group) %>% 
   summarise(Outflow = sum(Moves)) %>% 
   select(Area_name = Origin_area_name, Age_group, Outflow)
 
 area_flow <- area_inflow %>% 
-  left_join(area_x_outflow, by = c('Area_name', 'Age_group')) %>% 
+  left_join(area_outflow, by = c('Area_name', 'Age_group')) %>% 
   mutate(Net_migration = Inflow - Outflow,
          Migration_turnover = Inflow + Outflow) %>% 
   mutate(Sex = 'Persons') %>% 
-  left_join(census_population_five_years[c('Area_name', 'Sex', 'Age_group', 'Population')], by = c('Area_name', 'Sex', 'Age_group'))
+  left_join(census_population_five_years[c('Area_name', 'Sex', 'Age_group', 'Population')], by = c('Area_name', 'Sex', 'Age_group')) %>% 
+  mutate(Turnover_proportion = Inflow / Population)
 
 # This is absolute numbers, are the same areas experiencing a higher migration turnover as a proportion of its older population
 
-area_flow
+area_flow %>%
+  filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85+ years')) %>% 
+  group_by(Area_name, Sex) %>% 
+  summarise(Inflow = sum(Inflow),
+            Outflow = sum(Outflow),
+            Population = sum(Population)) %>% 
+  mutate(Age_group = '65+ years') %>% 
+  mutate(Net_migration = Inflow - Outflow,
+         Migration_turnover = Inflow + Outflow) %>% 
+  mutate(Turnover_proportion = paste0(round(Inflow / Population *100, 1), '%')) %>% 
+  select(Area_name, Age_group, Inflow, Outflow, Net_migration, Migration_turnover, Sex, Population, Turnover_proportion) %>%   flextable()
 
-# Which Local Authority has the highest number of 65+ moving into the area, from non-neighbouring areas
+# Gives an idea of the scale we're talking about, new people aged 65+ into the county represent 1.8% of the population of older people in West Sussex; ranging from 1.3% in Crawley to 3% in Chichester.
+
 
 
 # West Sussex picture ####
+# Median age of areas (MSOA and LTLA)
 # 2011 - 2021 map of over 65s and over 85s
-
-# Map CQC inspected residences ####
-
+# Map CQC inspected residences 
