@@ -205,7 +205,7 @@ moves_age <- origin_dest_df %>%
   ungroup()
 
 moves_broad_age <- origin_dest_df %>% 
-  group_by(Origin_area_code, Origin_area_name, Area_code, Area_name, Age_broad, Broad_origin) %>% 
+  group_by(Origin_area_code, Origin_area_name, Origin_region_name, Area_code, Area_name, RGN_name, Age_broad, Broad_origin) %>% 
   summarise(Moves = sum(Moves)) %>% 
   ungroup()
 
@@ -357,6 +357,248 @@ area_flow %>%
   select(Area_name, Age_group, Inflow, Outflow, Net_migration, Migration_turnover, Sex, Population, Turnover_proportion) %>%   flextable()
 
 # Gives an idea of the scale we're talking about, new people aged 65+ into the county represent 1.8% of the population of older people in West Sussex; ranging from 1.3% in Crawley to 3% in Chichester.
+
+Local_flow_total <- origin_dest_df %>% 
+  filter(Area_name == 'West Sussex' | Origin_area_name == 'West Sussex') %>%
+  filter(Broad_origin != 'Not moved') %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  mutate(InRegion_name = ifelse(Area_name == 'West Sussex', 'West Sussex', RGN_name)) %>% 
+  mutate(OutRegion_name = ifelse(Origin_area_name == 'West Sussex', 'West Sussex', Origin_region_name)) %>% 
+  group_by(InRegion_name, OutRegion_name) %>% 
+  summarise(Moves = sum(Moves)) %>% 
+  filter(OutRegion_name != InRegion_name) # Remove moves within area
+
+Local_flow_total %>% 
+  group_by(Area = OutRegion_name) %>% 
+  summarise(Moves = sum(Moves)) %>% 
+  bind_rows(Local_flow_total %>% 
+              group_by(Area = InRegion_name) %>% 
+              summarise(Moves = sum(Moves))) %>% 
+  group_by(Area) %>% 
+  summarise(Moves = sum(Moves))
+
+# Transparency (or highlighting areas) is controlled by adding a number between 0 and 99 to the end of the colour (adding 30 to every area except the one were interested in makes others 30% transparent).
+Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland", 'Outside of UK', 'West Sussex'), 
+                        Order = seq(1,14,1), 
+                        Colour = c("#bb5f70","#d3434b","#c96d34","#b58f48","#a8b23b","#588347","#5dbb61","#4db6c2","#6776c8","#a259c7","#c782bf","#cf4597", '#d3434b', '#1e4b7a'),
+                        Label_l1 = c("North East","North West","Yorkshire and", "East Midlands","West Midlands","East of", "London", "South East", "South West", "Wales", "Scotland", "Northern", 'Outside of', 'West Sussex'), 
+                        Label_l2 = c(NA,NA,"the Humber",NA,NA,"England",NA,NA,NA,NA,NA, "Ireland",'UK', '')) %>% 
+  mutate(Region = as.character(Region)) %>% 
+  mutate(Colour =  as.character(Colour)) %>% 
+  mutate(Colour = ifelse(Region == "West Sussex", paste0(Colour, 30), paste0(Colour)))
+
+# This just needs to be origin, destination, and moves
+
+# What if we did WSX to regions (South East not including West Sussex)
+
+# The next plot is saved as a png file
+png(file = paste0(output_store, '/wsx_all_age_census_chordplot.png'), 
+    height = 7, 
+    width = 7, 
+    units = "in", 
+    res = 100)
+
+circos.clear()
+par(mar = rep(0, 4), 
+    cex=1)
+circos.par(start.degree = 90, 
+           track.margin=c(-0.2, 0.2),
+           gap.degree = 6, 
+           points.overflow.warning = FALSE)
+
+# Create the plot itself
+chordDiagram(Local_flow_total, 
+             directional = 1, 
+             order = Area_meta$Region, 
+             grid.col = Area_meta$Colour, 
+             annotationTrack = "grid", 
+             transparency = 0.25,  
+             annotationTrackHeight = c(0.05, 0.1), 
+             direction.type = c("diffHeight", "arrows"), 
+             link.arr.type = "big.arrow",
+             diffHeight  = -0.02, 
+             link.sort = TRUE, 
+             link.largest.ontop = TRUE)
+
+circos.track(track.index = 1, 
+             bg.border = NA, # no borders are plotted on the track.
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim") 
+               sector.index = get.cell.meta.data("sector.index")
+               
+               Label_l1 = Area_meta %>% # collect matching name information from plot data frame (df1).
+                 filter(Region == sector.index) %>% 
+                 pull(Label_l1)
+               Label_l2 = Area_meta %>% 
+                 filter(Region == sector.index) %>% 
+                 pull(Label_l2)
+               
+# adds text from (reg1) either at y = 4 (if there is a second part of the name in reg2) or 3.
+               circos.text(x = mean(xlim), # add text in the middle of the arch
+                           y = ifelse(is.na(Label_l2), 3, 4), 
+                           labels = Label_l1, 
+                           facing = "bending", 
+                           cex = 0.5)
+               
+               circos.text(x = mean(xlim), 
+                           y = 2.75, 
+                           labels = Label_l2, # adds text (reg2).
+                           facing = "bending", 
+                           cex = 0.5)
+               
+#add axis with major and minor ticks, without flipping the axis labels in the bottom half.
+               circos.axis(h = "top",
+                           labels.cex = 0.5, 
+                           labels.niceFacing = FALSE, 
+                           labels.pos.adjust = FALSE,
+                           major.at = seq(0,70000,10000),
+                           minor.ticks = 9)
+             })
+
+text(x = .7,
+     y = .9,
+     pos = 4,
+     cex = 0.6,
+     labels = paste0("Units = moves;\nEach tick represents\n1,000 moves."))
+
+text(x = -1, 
+     y = .9, 
+     pos = 4, 
+     cex = 1.1, 
+     labels = "The flow of the population in West Sussex\n(all ages)")
+
+text(x = -1, 
+     y = .75, 
+     pos = 4, 
+     cex = 1.1, 
+     col = "red",
+     labels = paste0('2020-2021'))
+
+text(x = .6, 
+     y = -.9, 
+     pos = 4, 
+     cex = 0.6, 
+     labels = paste0('Data source = Census 2021'))
+
+dev.off()
+
+
+Local_flow_total_2 <- origin_dest_df %>% 
+  filter(Age_broad == '65+ years') %>% 
+  filter(Area_name == 'West Sussex' | Origin_area_name == 'West Sussex') %>%
+  filter(Broad_origin != 'Not moved') %>% 
+  filter(Broad_origin != 'Moved within local authority') %>% 
+  mutate(InRegion_name = ifelse(Area_name == 'West Sussex', 'West Sussex', RGN_name)) %>% 
+  mutate(OutRegion_name = ifelse(Origin_area_name == 'West Sussex', 'West Sussex', Origin_region_name)) %>% 
+  group_by(InRegion_name, OutRegion_name) %>% 
+  summarise(Moves = sum(Moves)) %>% 
+  filter(OutRegion_name != InRegion_name) # Remove moves within area
+  
+# Transparency (or highlighting areas) is controlled by adding a number between 0 and 99 to the end of the colour (adding 30 to every area except the one were interested in makes others 30% transparent).
+Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland", 'Outside of UK', 'West Sussex'), 
+                        Order = seq(1,14,1), 
+                        Colour = c("#bb5f70","#d3434b","#c96d34","#b58f48","#a8b23b","#588347","#5dbb61","#4db6c2","#6776c8","#a259c7","#c782bf","#cf4597", '#d3434b', '#1e4b7a'),
+                        Label_l1 = c("North East","North West","Yorkshire and", "East Midlands","West Midlands","East of", "London", "South East", "South West", "Wales", "Scotland", "Northern", 'Outside of', 'West Sussex'), 
+                        Label_l2 = c(NA,NA,"the Humber",NA,NA,"England",NA,NA,NA,NA,NA, "Ireland",'UK', '')) %>% 
+  mutate(Region = as.character(Region)) %>% 
+  mutate(Colour =  as.character(Colour)) %>% 
+  mutate(Colour = ifelse(Region == "West Sussex", paste0(Colour, 30), paste0(Colour)))
+
+# This just needs to be origin, destination, and moves
+
+# What if we did WSX to regions (South East not including West Sussex)
+
+# The next plot is saved as a png file
+png(file = paste0(output_store, '/wsx_65_plus_census_chordplot.png'),
+    height = 7,
+    width = 7,
+    units = "in",
+    res = 100)
+
+circos.clear()
+par(mar = rep(0, 4), 
+    cex=1)
+circos.par(start.degree = 90, 
+           track.margin=c(-0.2, 0.2),
+           gap.degree = 6, 
+           points.overflow.warning = FALSE)
+
+
+# Create the plot itself
+chordDiagram(Local_flow_total_2, 
+             directional = 1, 
+             order = Area_meta$Region, 
+             grid.col = Area_meta$Colour, 
+             annotationTrack = "grid", 
+             transparency = 0.25,  
+             annotationTrackHeight = c(0.05, 0.1), 
+             direction.type = c("diffHeight", "arrows"), 
+             link.arr.type = "big.arrow",
+             diffHeight  = -0.02, 
+             link.sort = TRUE, 
+             link.largest.ontop = TRUE)
+
+circos.track(track.index = 1, 
+             bg.border = NA, # no borders are plotted on the track.
+             panel.fun = function(x, y) {
+               xlim = get.cell.meta.data("xlim") 
+               sector.index = get.cell.meta.data("sector.index")
+               
+               Label_l1 = Area_meta %>% # collect matching name information from plot data frame (df1).
+                 filter(Region == sector.index) %>% 
+                 pull(Label_l1)
+               Label_l2 = Area_meta %>% 
+                 filter(Region == sector.index) %>% 
+                 pull(Label_l2)
+               
+               # adds text from (reg1) either at y = 4 (if there is a second part of the name in reg2) or 3.
+               circos.text(x = mean(xlim), # add text in the middle of the arch
+                           y = ifelse(is.na(Label_l2), 3, 4), 
+                           labels = Label_l1, 
+                           facing = "bending", 
+                           cex = 0.5)
+               
+               circos.text(x = mean(xlim), 
+                           y = 2.75, 
+                           labels = Label_l2, # adds text (reg2).
+                           facing = "bending", 
+                           cex = 0.5)
+               
+               #add axis with major and minor ticks, without flipping the axis labels in the bottom half.
+               circos.axis(h = "top",
+                           labels.cex = 0.5, 
+                           labels.niceFacing = FALSE, 
+                           labels.pos.adjust = FALSE,
+                           major.at = seq(0,6000,1000),
+                           minor.ticks = 9)
+             })
+
+text(x = .7,
+     y = .9,
+     pos = 4,
+     cex = 0.6,
+     labels = paste0("Units = moves;\nEach tick represents\n100 moves."))
+
+text(x = -1, 
+     y = .9, 
+     pos = 4, 
+     cex = 1.1, 
+     labels = "The flow of the population in West Sussex\n(aged 65+ years)")
+
+text(x = -1, 
+     y = .75, 
+     pos = 4, 
+     cex = 1.1, 
+     col = "red",
+     labels = paste0('2020-2021'))
+
+text(x = .6, 
+     y = -.9, 
+     pos = 4, 
+     cex = 0.6, 
+     labels = paste0('Data source = Census 2021'))
+
+dev.off()
 
 
 
