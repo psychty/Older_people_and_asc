@@ -34,13 +34,15 @@ download.file("https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/pop
   unzip(paste0(local_store, "/detailedestimates2018dataset1.zip"), exdir = local_store)
 
 
-download.file("https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/migrationwithintheuk/datasets/internalmigrationbyoriginanddestinationlocalauthoritiessexandsingleyearofagedetailedestimatesdataset/yearendingjune2018part22019laboundaries/detailedestimates2018dataset22019laboundaries.zip", "./Migration_flow/detailedestimates2018dataset2.zip", mode = "wb")
-unzip("./Migration_flow/detailedestimates2018dataset2.zip", exdir = "./Migration_flow")
+download.file("https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/migrationwithintheuk/datasets/internalmigrationbyoriginanddestinationlocalauthoritiessexandsingleyearofagedetailedestimatesdataset/yearendingjune2018part22019laboundaries/detailedestimates2018dataset22019laboundaries.zip", 
+              paste0(local_store, "/detailedestimates2018dataset2.zip"),
+              mode = "wb")
+unzip(paste0(local_store, "/detailedestimates2018dataset2.zip"), exdir = local_store)
 }
 
 # Read in the latest (2018) LA level data and add names to the codes as well as more information about which upper tier LA and region the lower tier LA (or UA) is in
-Migration_flow <- read_csv("./Migration_flow/Detailed_Estimates_2018_Dataset_1_2019_LA_boundaries.csv", col_types = cols(OutLA = col_character(),InLA = col_character(),Age = col_integer(),Sex = col_character(),Moves = col_double())) %>% 
-  bind_rows(read_csv("./Migration_flow/Detailed_Estimates_2018_Dataset_2_2019_LA_boundaries.csv", col_types = cols(OutLA = col_character(),InLA = col_character(),Age = col_integer(),Sex = col_character(),Moves = col_double()))) %>% 
+Migration_flow <- read_csv(paste0(local_store, "/Detailed_Estimates_2018_Dataset_1_2019_LA_boundaries.csv"), col_types = cols(OutLA = col_character(),InLA = col_character(),Age = col_integer(),Sex = col_character(),Moves = col_double())) %>% 
+  bind_rows(read_csv(paste0(local_store, "/Detailed_Estimates_2018_Dataset_2_2019_LA_boundaries.csv"), col_types = cols(OutLA = col_character(),InLA = col_character(),Age = col_integer(),Sex = col_character(),Moves = col_double()))) %>% 
   left_join(LAD_lookup[c("LTLA19CD", "LTLA19NM","UTLA19CD","UTLA19NM","RGN19NM")], by = c("OutLA" = "LTLA19CD")) %>% 
   rename(OutLA_name = LTLA19NM) %>% 
   rename(OutLA_upper_tier = UTLA19CD) %>% 
@@ -65,7 +67,6 @@ Migration_flow_total <- Migration_flow %>%
   group_by(OutLA, OutLA_name, OutLA_upper_tier, OutLA_upper_tier_name, OutRegion_name, InLA, InLA_name, InLA_upper_tier, InLA_upper_tier_name, InRegion_name) %>% 
   summarise(Moves = sum(Moves, na.rm = TRUE)) %>% 
   ungroup()
-
 
 #	Aggregating total moves to upper tier LA and regions ####
 
@@ -121,9 +122,8 @@ Region_Migration_flow_total <- Migration_flow_total %>%
   mutate(InRegion_name = as.character(InRegion_name)) %>% 
   mutate(Moves = Moves/1000)
 
-
 # The next plot is saved as a png file
-png(file = paste0("/Users/richtyler/Documents/Repositories/Internal-migration-flows/region_2018_chordplot.png"), height = 7, width = 7, units = "in", res = 100)
+#png(file = paste0("/Users/richtyler/Documents/Repositories/Internal-migration-flows/region_2018_chordplot.png"), height = 7, width = 7, units = "in", res = 100)
 
 circos.clear()
 par(mar = rep(0, 4), cex=1)
@@ -199,7 +199,7 @@ text(x = -1,
      col = "red",
      labels = paste0('2017-18'))
 
-dev.off()
+# dev.off()
 
 # Using this data on an interactive d3 chart ####
 
@@ -218,12 +218,11 @@ Matrix_reg_migration_abs <- Region_Migration_flow_total %>%
   arrange(OutRegion_name)
 
 Matrix_reg_migration_abs %>% 
-  select(-OutRegion_name) %>% 
-  toJSON(dataframe = 'values') %>% 
-  write_lines('/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration.json')
+  select(-OutRegion_name) #%>% 
+  #toJSON(dataframe = 'values') %>% 
+  #write_lines('/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration.json')
 
 # Perhaps we need to have two values for each pair ####
-
 
 Matrix_reg_migration <- Region_Migration_flow_total %>%
   mutate(InRegion_name = factor(InRegion_name, levels = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland"))) %>% 
@@ -236,15 +235,14 @@ Matrix_reg_migration <- Region_Migration_flow_total %>%
   mutate(OutRegion_name = factor(OutRegion_name, levels = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland"))) %>% 
   arrange(OutRegion_name)
 
-write.csv(Matrix_reg_migration, "/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration_proportion.csv", row.names = FALSE)
+#write.csv(Matrix_reg_migration, "/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration_proportion.csv", row.names = FALSE)
 
 # This is saying for each row, the column is where moves were TO
 
 Matrix_reg_migration %>% 
-  select(-OutRegion_name) %>% 
-  toJSON(dataframe = 'values') %>% 
-  write_lines('/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration.json')
-
+  select(-OutRegion_name) #%>% 
+#  toJSON(dataframe = 'values') %>% 
+  # write_lines('/Users/richtyler/Documents/Repositories/Internal-migration-flows/Matrix_reg_migration.json')
 
 i = 1
 Area_x <- Areas_to_include[i]
