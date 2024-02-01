@@ -17,8 +17,8 @@
 
 #https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/migrationwithintheuk/datasets/internalmigrationbyoriginanddestinationlocalauthoritiessexandsingleyearofagedetailedestimatesdataset/yearendingjune2020part2/detailedestimates2020on2021laspt2.zip
 
-# Loading some packages 
-packages <- c('easypackages','plyr', 'tidyr', 'ggplot2', 'dplyr', 'scales', 'readxl', 'readr', 'purrr', 'stringr', 'rgdal',  'geojsonio', 'jsonlite', 'viridis', 'nomisr', 'lemon', 'spdplyr', 'rgeos', "tmaptools", 'sp', 'sf', 'maptools', 'flextable', 'ggmap', 'grid', 'lemon', 'ggpol', 'httr', 'rvest')
+# Loading some packages
+packages <- c('easypackages','plyr', 'tidyr', 'ggplot2', 'dplyr', 'scales', 'readxl', 'readr', 'purrr', 'stringr', 'rgdal',  'geojsonio', 'jsonlite', 'viridis', 'nomisr', 'lemon', 'spdplyr', 'rgeos', "tmaptools", 'sp', 'sf', 'maptools', 'flextable', 'ggmap', 'grid', 'lemon', 'ggpol', 'httr', 'rvest',"circlize", "tweenr", "magick")
 
 install.packages(setdiff(packages, rownames(installed.packages())))
 easypackages::libraries(packages)
@@ -27,7 +27,6 @@ local_store <- '~/Repositories/Older_people_and_asc/Data'
 output_store <- '~/Repositories/Older_people_and_asc/Outputs'
 
 local_areas <- c('Adur', 'Arun', 'Chichester', 'Crawley', 'Horsham', 'Mid Sussex', 'Worthing')
-
 
 # Lookup
 
@@ -251,8 +250,6 @@ area_focus_x %>%
   summarise(Moves = sum(Moves)) %>% 
   mutate(Proportion = Moves/sum(Moves))
 
-unique(origin_dest_df$Broad_origin)
-
 # Which Local Authority has the highest number of 65+ moving into the area, from non-neighbouring areas
 
 # generalise this to capture WSx areas
@@ -358,6 +355,11 @@ area_flow %>%
 
 # Gives an idea of the scale we're talking about, new people aged 65+ into the county represent 1.8% of the population of older people in West Sussex; ranging from 1.3% in Crawley to 3% in Chichester.
 
+# Chordplot ####
+
+if(file.exists(paste0(output_store, '/Age_65_plus_migration_flow_raw.svg')) != TRUE){
+
+
 Local_flow_total <- origin_dest_df %>% 
   filter(Area_name == 'West Sussex' | Origin_area_name == 'West Sussex') %>%
   filter(Broad_origin != 'Not moved') %>% 
@@ -377,7 +379,20 @@ Local_flow_total %>%
   group_by(Area) %>% 
   summarise(Moves = sum(Moves))
 
+# In the year to Census day, there were 16,655 moves from the South East region (excluding West Sussex itself), into the county. There were slightly fewer people who left West Sussex (12,468) to live elsewhere in the South East region.
+Local_flow_total %>% 
+  filter(OutRegion_name == 'South East')
+
+Local_flow_total %>% 
+  filter(InRegion_name == 'South East')
+
+Local_flow_total <- Local_flow_total %>% 
+  select(OutRegion_name, InRegion_name, Moves)
+
+
 # Transparency (or highlighting areas) is controlled by adding a number between 0 and 99 to the end of the colour (adding 30 to every area except the one were interested in makes others 30% transparent).
+
+
 Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland", 'Outside of UK', 'West Sussex'), 
                         Order = seq(1,14,1), 
                         Colour = c("#bb5f70","#d3434b","#c96d34","#b58f48","#a8b23b","#588347","#5dbb61","#4db6c2","#6776c8","#a259c7","#c782bf","#cf4597", '#d3434b', '#1e4b7a'),
@@ -387,20 +402,12 @@ Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The 
   mutate(Colour =  as.character(Colour)) %>% 
   mutate(Colour = ifelse(Region == "West Sussex", paste0(Colour, 30), paste0(Colour)))
 
-# This just needs to be origin, destination, and moves
-
-# What if we did WSX to regions (South East not including West Sussex)
-
-# The next plot is saved as a png file
-png(file = paste0(output_store, '/wsx_all_age_census_chordplot.png'), 
-    height = 7, 
-    width = 7, 
-    units = "in", 
-    res = 100)
+svg(paste0(output_store, '/All_age_migration_flow_raw.svg'), width = 12)
 
 circos.clear()
 par(mar = rep(0, 4), 
     cex=1)
+
 circos.par(start.degree = 90, 
            track.margin=c(-0.2, 0.2),
            gap.degree = 6, 
@@ -420,40 +427,46 @@ chordDiagram(Local_flow_total,
              link.sort = TRUE, 
              link.largest.ontop = TRUE)
 
-circos.track(track.index = 1, 
-             bg.border = NA, # no borders are plotted on the track.
-             panel.fun = function(x, y) {
-               xlim = get.cell.meta.data("xlim") 
-               sector.index = get.cell.meta.data("sector.index")
-               
-               Label_l1 = Area_meta %>% # collect matching name information from plot data frame (df1).
-                 filter(Region == sector.index) %>% 
-                 pull(Label_l1)
-               Label_l2 = Area_meta %>% 
-                 filter(Region == sector.index) %>% 
-                 pull(Label_l2)
-               
-# adds text from (reg1) either at y = 4 (if there is a second part of the name in reg2) or 3.
-               circos.text(x = mean(xlim), # add text in the middle of the arch
-                           y = ifelse(is.na(Label_l2), 3, 4), 
-                           labels = Label_l1, 
-                           facing = "bending", 
-                           cex = 0.5)
-               
-               circos.text(x = mean(xlim), 
-                           y = 2.75, 
-                           labels = Label_l2, # adds text (reg2).
-                           facing = "bending", 
-                           cex = 0.5)
-               
-#add axis with major and minor ticks, without flipping the axis labels in the bottom half.
-               circos.axis(h = "top",
-                           labels.cex = 0.5, 
-                           labels.niceFacing = FALSE, 
-                           labels.pos.adjust = FALSE,
-                           major.at = seq(0,70000,10000),
-                           minor.ticks = 9)
-             })
+circos.track(
+  track.index = 1, 
+  bg.border = NA, # no borders are plotted on the track.
+  panel.fun = function(x, y) {
+    xlim = get.cell.meta.data("xlim") 
+    sector.index = get.cell.meta.data("sector.index")
+    
+    Label_l1 = Area_meta %>% # collect matching name information from plot data frame (df1).
+      filter(Region == sector.index) %>% 
+      pull(Label_l1)
+    
+    Label_l2 = Area_meta %>% 
+      filter(Region == sector.index) %>% 
+      pull(Label_l2)
+    
+    # adds text from (reg1) either at y = 4 (if there is a second part of the name in reg2) or 3.
+    circos.text(
+      x = mean(xlim), # add text in the middle of the arch
+      y = ifelse(is.na(Label_l2), 3, 4), 
+      labels = Label_l1,
+      facing = "bending", 
+      cex = 0.5
+    )
+    
+    circos.text(
+      x = mean(xlim), 
+      y = 2.75, 
+      labels = Label_l2, # adds text (reg2).
+      facing = "bending", 
+      cex = 0.5
+    )
+    
+    #add axis with major and minor ticks, without flipping the axis labels in the bottom half.
+    circos.axis(h = "top",
+                labels.cex = 0.5, 
+                labels.niceFacing = FALSE, 
+                labels.pos.adjust = FALSE,
+                major.at = seq(0,70000,5000),
+                minor.ticks = 4)
+  })
 
 text(x = .7,
      y = .9,
@@ -482,7 +495,6 @@ text(x = .6,
 
 dev.off()
 
-
 Local_flow_total_2 <- origin_dest_df %>% 
   filter(Age_broad == '65+ years') %>% 
   filter(Area_name == 'West Sussex' | Origin_area_name == 'West Sussex') %>%
@@ -492,8 +504,9 @@ Local_flow_total_2 <- origin_dest_df %>%
   mutate(OutRegion_name = ifelse(Origin_area_name == 'West Sussex', 'West Sussex', Origin_region_name)) %>% 
   group_by(InRegion_name, OutRegion_name) %>% 
   summarise(Moves = sum(Moves)) %>% 
-  filter(OutRegion_name != InRegion_name) # Remove moves within area
-  
+  filter(OutRegion_name != InRegion_name) %>%  # Remove moves within area
+  select(OutRegion_name, InRegion_name, Moves)
+
 # Transparency (or highlighting areas) is controlled by adding a number between 0 and 99 to the end of the colour (adding 30 to every area except the one were interested in makes others 30% transparent).
 Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The Humber", "East Midlands","West Midlands","East of England", "London", "South East", "South West", "Wales", "Scotland", "Northern Ireland", 'Outside of UK', 'West Sussex'), 
                         Order = seq(1,14,1), 
@@ -509,11 +522,7 @@ Area_meta <- data.frame(Region = c("North East","North West","Yorkshire and The 
 # What if we did WSX to regions (South East not including West Sussex)
 
 # The next plot is saved as a png file
-png(file = paste0(output_store, '/wsx_65_plus_census_chordplot.png'),
-    height = 7,
-    width = 7,
-    units = "in",
-    res = 100)
+svg(paste0(output_store, '/Age_65_plus_migration_flow_raw.svg'), width = 12)
 
 circos.clear()
 par(mar = rep(0, 4), 
@@ -522,7 +531,6 @@ circos.par(start.degree = 90,
            track.margin=c(-0.2, 0.2),
            gap.degree = 6, 
            points.overflow.warning = FALSE)
-
 
 # Create the plot itself
 chordDiagram(Local_flow_total_2, 
@@ -600,9 +608,46 @@ text(x = .6,
 
 dev.off()
 
+}
 
+# Note for Outside of UK, we wont know the outflow to, as they would not have completed the Census.
 
 # West Sussex picture ####
 # Median age of areas (MSOA and LTLA)
 # 2011 - 2021 map of over 65s and over 85s
+
+# small area ####
+census_21_LSOA_raw_df <- nomis_get_data(id = 'NM_2020_1',
+                                     time = 'latest',
+                                     measures = '20100',
+                                     c2021_age_19 = '0,14...18',
+                                     geography = 'TYPE151') %>%
+  select(Area_code = GEOGRAPHY_CODE, Area_name = GEOGRAPHY_NAME, Year = DATE, Age = C2021_AGE_19_NAME, Population = OBS_VALUE)
+# 
+# census_11_LSOA_raw_df <- nomis_get_data(id = 'NM_1414_1',
+#                                         time = 'latest', 
+#                                         measures = '20100',
+#                                         c_age = '0,34...39',
+#                                         geography = 'TYPE298') #%>% 
+#   select(Area_code = GEOGRAPHY_CODE, Area_name = GEOGRAPHY_NAME, Year = DATE, Age = C2021_AGE_19_NAME, Population = OBS_VALUE) 
+# 
+# https://www.nomisweb.co.uk/api/v01/dataset/NM_1414_1.data.csv?date=latest&geography=1249902593...1249937345&c_sex=0&c_age=0,34...39&measures=20100
+
+# Describe population change at LTLA levels
+
+if(file.exists(paste0(local_store, '/ltla_censusareachanges.xlsx'))!= TRUE){
+download.file('https://www.ons.gov.uk/visualisations/censusareachanges/data/datadownload.xlsx',
+              paste0(local_store, '/ltla_censusareachanges.xlsx'),
+              mode = 'wb')
+}
+
 # Map CQC inspected residences 
+
+cqc_raw <- read_csv('https://www.cqc.org.uk/sites/default/files/2024-01/24_January_2024_CQC_directory.csv',
+                    skip = 4)
+
+cqc_wsx <- cqc_raw %>% 
+  filter(`Local authority` == 'West Sussex') %>% 
+  filter(str_detect(`Service types`, 	'Nursing homes|Residential homes')) %>% 
+  filter(str_detect(`Specialisms/services`, 'Caring for adults over 65 yrs'))
+
