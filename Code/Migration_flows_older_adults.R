@@ -651,3 +651,76 @@ cqc_wsx <- cqc_raw %>%
   filter(str_detect(`Service types`, 	'Nursing homes|Residential homes')) %>% 
   filter(str_detect(`Specialisms/services`, 'Caring for adults over 65 yrs'))
 
+
+# The future ####
+
+
+
+if(file.exists(paste0(local_store, '/ltla_subnational_oadr.xlsx'))!= TRUE){
+  download.file('https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/populationofstatepensionageandworkingageandoldagedependencyratiosforlocalauthoritiesandregionsinengland/2018based/2018snppprincipaloadr.xlsx',
+                paste0(local_store, '/ltla_subnational_oadr.xlsx'),
+                mode = 'wb')
+}
+
+
+
+oadr_ons <- read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
+                                           sheet = "Counties", skip = 3) %>% 
+  bind_rows(read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
+                            sheet = "Local authorities", skip = 3)) %>% 
+  bind_rows(read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
+                       sheet = "Regions", skip = 3)) %>% 
+  pivot_longer(cols = '2018':'2043',
+               names_to = 'Year') %>% 
+  filter(area_name %in% c(local_areas, 'West Sussex', 'South East')) %>% 
+  filter(age_group == 'Old age dependency ratio') %>% 
+  select(Area = area_name, Year, OADR = value) %>% 
+  mutate(Year = as.numeric(Year))
+
+
+oadr_eng <- read_csv('https://download.ons.gov.uk/downloads/datasets/ageing-population-projections/editions/time-series/versions/1.csv') %>%
+  filter(AgeGroups == 'Old age dependency ratio') %>%
+  filter(Sex == 'All') %>%
+  filter(UnitOfMeasure == 'Number') %>%
+  select(Area = Geography, Year = Time, OADR = v4_1) %>% 
+  filter(Area == 'England')
+
+
+# need to get 1991 - 2022 population estimates then 2018 based projections to 2043
+# oadr of 16-64 year olds over 65+
+# This does not take into account the different SPA over time.
+
+oadr_raw_estimated <- nomis_get_data(id = 'NM_2002_1',
+                                   #  time = 'latest', 
+                                     gender = '0', # '1,2' would return males and females
+                                     measures = '20100',
+                                     c_age = '203,209',
+                                     geography = '1807745163,1811939621...1811939627,2013265928,2092957699') %>% 
+  select(Area_code = GEOGRAPHY_CODE, Area_name = GEOGRAPHY_NAME, Year = DATE, Age = C_AGE_NAME, Population = OBS_VALUE) %>% 
+  mutate(Type = 'Estimated')
+
+oadr_raw_projected <- nomis_get_data(id = 'NM_2006_1',
+               #  time = 'latest', 
+               gender = '0', # '1,2' would return males and females
+               measures = '20100',
+               c_age = '203,209',
+               geography = '1816133768,1820328217...1820328223,2092957699,2013265928') %>% 
+  select(Area_code = GEOGRAPHY_CODE, Area_name = GEOGRAPHY_NAME, Year = PROJECTED_YEAR, Age = C_AGE_NAME, Population = OBS_VALUE) %>% 
+  filter(!Year %in% c(2018,2019,2020,2021,2022)) %>% 
+  mutate(Type = 'Projected')
+
+oadr_df <- oadr_raw_estimated %>%
+  bind_rows(oadr_raw_projected) %>% 
+  pivot_wider(names_from = 'Age',
+              values_from = 'Population') %>% 
+  mutate(OADR = `Aged 65+` / `Aged 16 to 64` * 1000)
+
+oadr_df %>% 
+  arrange(Year) %>% 
+  ggplot(aes(x = Year,
+             y = OADR,
+             group = Area_name)) +
+  geom_line() +
+  scale_y_continuous(limits = c(0,800))# +
+  ph_theme()
+
