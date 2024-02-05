@@ -18,7 +18,7 @@
 #https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/migrationwithintheuk/datasets/internalmigrationbyoriginanddestinationlocalauthoritiessexandsingleyearofagedetailedestimatesdataset/yearendingjune2020part2/detailedestimates2020on2021laspt2.zip
 
 # Loading some packages
-packages <- c('easypackages','plyr', 'tidyr', 'ggplot2', 'dplyr', 'scales', 'readxl', 'readr', 'purrr', 'stringr', 'rgdal',  'geojsonio', 'jsonlite', 'viridis', 'nomisr', 'lemon', 'spdplyr', 'rgeos', "tmaptools", 'sp', 'sf', 'maptools', 'flextable', 'ggmap', 'grid', 'lemon', 'ggpol', 'httr', 'rvest',"circlize", "tweenr", "magick")
+packages <- c('easypackages','plyr', 'tidyr', 'ggplot2', 'dplyr', 'scales', 'readxl', 'readr', 'purrr', 'stringr', 'rgdal',  'geojsonio', 'jsonlite', 'viridis', 'nomisr', 'lemon', 'spdplyr', 'rgeos', "tmaptools", 'sp', 'sf', 'maptools', 'flextable', 'ggmap', 'grid', 'lemon', 'ggpol', 'httr', 'rvest','circlize', 'directlabels')
 
 install.packages(setdiff(packages, rownames(installed.packages())))
 easypackages::libraries(packages)
@@ -64,6 +64,37 @@ area_lookup %>%
 }
 
 area_lookup <- read_csv(paste0(output_store, '/Area_to_region_lookup.csv'))
+
+
+# Custom fonts ####
+showtext::showtext_auto(TRUE)
+
+
+# general themes for ggplots
+ph_theme = function(){
+  theme(
+    plot.title = element_text(colour = "#000000", face = "bold", size = 12, family = 'poppinsb'),
+    plot.subtitle = element_text(colour = "#000000", size = 12),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.background = element_rect(fill = "#FFFFFF"),
+    panel.grid.major.y = element_line(colour = "#E7E7E7", size = .3),
+    panel.grid.minor.y = element_blank(),
+    strip.text = element_text(colour = "#000000", size = 11),
+    strip.background = element_blank(),
+    axis.ticks = element_line(colour = "#dbdbdb"),
+    legend.title = element_text(colour = "#000000", size = 11, face = "bold"),
+    legend.background = element_rect(fill = "#ffffff"),
+    legend.key = element_rect(fill = "#ffffff", colour = "#ffffff"),
+    legend.key.size = unit(.5,"line"),
+    legend.text = element_text(colour = "#000000", size = 11),
+    axis.text = element_text(colour = "#000000", size = 11),
+    axis.title =  element_text(colour = "#000000", size = 11, face = "bold"),
+    axis.line = element_line(colour = "#dbdbdb"),
+    legend.position = 'none',
+    # plot.margin = margin(t = 1, r = 1.5, b = 0.2,l = 0, unit = 'cm'),
+    text = element_text(family = 'poppins'))}
+
 
 # https://www.nomisweb.co.uk/sources/census_2021_od
 
@@ -709,18 +740,53 @@ oadr_raw_projected <- nomis_get_data(id = 'NM_2006_1',
   filter(!Year %in% c(2018,2019,2020,2021,2022)) %>% 
   mutate(Type = 'Projected')
 
+
+
 oadr_df <- oadr_raw_estimated %>%
   bind_rows(oadr_raw_projected) %>% 
   pivot_wider(names_from = 'Age',
               values_from = 'Population') %>% 
-  mutate(OADR = `Aged 65+` / `Aged 16 to 64` * 1000)
+  mutate(OADR = `Aged 65+` / `Aged 16 to 64` * 1000) %>% 
+  mutate(Area_type = factor(ifelse(Area_name %in% c('Adur', 'Arun', 'Chichester', 'Crawley', 'Horsham', 'Mid Sussex', 'Worthing'), 'West Sussex District and Borough', ifelse(Area_name == 'South East', 'South East region', Area_name)), levels = c('West Sussex District and Borough', 'West Sussex', 'South East region', 'England')))
 
-oadr_df %>% 
+oadr_fig <- oadr_df %>% 
+  filter(Year %in% c(1991, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030, 2035, 2040, 2043)) %>% 
   arrange(Year) %>% 
   ggplot(aes(x = Year,
              y = OADR,
              group = Area_name)) +
-  geom_line() +
-  scale_y_continuous(limits = c(0,800))# +
+  annotate(geom = "rect", xmin = 2022.5, xmax = Inf, ymin = 0, ymax = Inf, fill = "#e7e7e7", alpha = 0.35) +
+  annotate(geom = "text", x = 1992, y = 750, hjust = 0, label = "Estimated", fontface = "bold", size = 4) +
+  annotate(geom = "text", x = 2023, y = 750, hjust = 0, label = "Projected", fontface = "bold", size = 4) +
+  geom_line(aes(colour = Area_type),
+            linewidth = 1) +
+  geom_point(shape = 21,
+             size = 4,
+             aes(colour = Area_type),
+             fill = '#ffffff') +
+  scale_colour_manual(values = c('#dbdbdb', '#1e4b7a', '#4db6c2', 'maroon')) +
+  scale_y_continuous(limits = c(0,800),
+                     breaks = seq(0,800, 100),
+                     expand = c(0,0.01)) +
+  scale_x_continuous(breaks = c(1991, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030, 2035, 2040, 2043),
+                     limits = c(1990, 2055),
+                     expand = c(0,0.01)) +
+  labs(x = 'Year',
+       y = 'Number of 65+ year olds per 1,000 people aged 16-64',
+       title = paste0('Old age dependency ratio: West Sussex areas; 1991-2043'),
+       subtitle = 'Age 65+ per 1,000 aged 16-64*',
+       caption =  '*Note: This does not take into account changes in state pension age over time.') +
+  geom_vline(xintercept = 2022.5, lty = "dotted", colour = "#000000", lwd = 1) +
+  geom_dl(data = subset(oadr_df, Year == 2043),
+          aes(y = ifelse(Area_name %in% c('Chichester'), OADR + 15, ifelse(Area_name == 'Adur', OADR - 5, ifelse(Area_name == 'Horsham', OADR + 20, ifelse(Area_name %in% c('Arun', 'Worthing'), OADR - 15, OADR)))),
+              x = 2044,
+              label = paste0(' ', format(round(OADR,0),big.mark = ','), ' - ', Area_name)),
+          method = list(cex = .65, hjust = 0)) + 
   ph_theme()
 
+svg(paste0(output_store, '/OADR_timeseries.svg'),
+    width = 10,
+    height = 4.5,
+    pointsize = 12)
+print(oadr_fig)
+dev.off()
