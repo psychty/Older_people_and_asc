@@ -95,7 +95,6 @@ ph_theme = function(){
     # plot.margin = margin(t = 1, r = 1.5, b = 0.2,l = 0, unit = 'cm'),
     text = element_text(family = 'poppins'))}
 
-
 # https://www.nomisweb.co.uk/sources/census_2021_od
 
 # Overall migration ####
@@ -685,8 +684,6 @@ cqc_wsx <- cqc_raw %>%
 
 # The future ####
 
-
-
 if(file.exists(paste0(local_store, '/ltla_subnational_oadr.xlsx'))!= TRUE){
   download.file('https://www.ons.gov.uk/file?uri=/peoplepopulationandcommunity/populationandmigration/populationprojections/datasets/populationofstatepensionageandworkingageandoldagedependencyratiosforlocalauthoritiesandregionsinengland/2018based/2018snppprincipaloadr.xlsx',
                 paste0(local_store, '/ltla_subnational_oadr.xlsx'),
@@ -695,7 +692,7 @@ if(file.exists(paste0(local_store, '/ltla_subnational_oadr.xlsx'))!= TRUE){
 
 
 
-oadr_ons <- read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
+ oadr_ons <- read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
                                            sheet = "Counties", skip = 3) %>% 
   bind_rows(read_excel("Older_people_and_asc/Data/ltla_subnational_oadr.xlsx", 
                             sheet = "Local authorities", skip = 3)) %>% 
@@ -715,7 +712,6 @@ oadr_eng <- read_csv('https://download.ons.gov.uk/downloads/datasets/ageing-popu
   filter(UnitOfMeasure == 'Number') %>%
   select(Area = Geography, Year = Time, OADR = v4_1) %>% 
   filter(Area == 'England')
-
 
 # need to get 1991 - 2022 population estimates then 2018 based projections to 2043
 # oadr of 16-64 year olds over 65+
@@ -790,3 +786,14 @@ svg(paste0(output_store, '/OADR_timeseries.svg'),
     pointsize = 12)
 print(oadr_fig)
 dev.off()
+
+oadr_df %>% 
+  filter(Year %in% c(2023, 2033, 2043)) %>% 
+  arrange(Year) %>% 
+  select(Area_name, Year, OADR) %>% 
+  pivot_wider(names_from = 'Year',
+              values_from = 'OADR')
+
+oadr_df %>% filter(OADR >= 500) %>% 
+  arrange(Area_name, Year) %>% 
+  View()
