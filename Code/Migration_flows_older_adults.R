@@ -65,10 +65,8 @@ area_lookup %>%
 
 area_lookup <- read_csv(paste0(output_store, '/Area_to_region_lookup.csv'))
 
-
 # Custom fonts ####
 showtext::showtext_auto(TRUE)
-
 
 # general themes for ggplots
 ph_theme = function(){
@@ -199,7 +197,7 @@ table_1 <- total_table %>%
   select(Area = Area_name, `All ages`, `65+ years`, `85+ years`) %>% 
   flextable()
 
-table_1
+table_1 %>% print(., preview = 'docx')
 
 # by age address moves Census 2021 ####
 
@@ -305,6 +303,9 @@ table_2a_flex <- table_2a %>%
   flextable()
 
 
+table_2a_flex %>% print(., preview = 'docx')
+
+
 # This excludes those who moved in the last year but from another address in the same local authority (e.g. inflows capture those becoming a new resident of responsibility for the local authority).As you can see, the sum of the number of people moving into each of the lower tier local authority is greater than the number of people moving into West Sussex from outside of the county suggesting that a large number of moves between the local authorities of West Sussex rather than new people into the county.
 
 table_2b <- origin_dest_df %>% 
@@ -327,6 +328,8 @@ table_2b_flex <- table_2b %>%
   mutate(`65+ years` = paste0(format(`65+ years`, big.mark = ',', trim = TRUE), ' (', round(Proportion_65 *100, 1), '%)')) %>% 
   select(Area = Area_name, `Total moves into area`,`1-64 years`, `65+ years`) %>% 
   flextable()
+
+table_2b_flex %>% print(., preview = 'docx')
 
 table_2a %>% 
   select(Area_name, Moves_2a = 'Total moves into area', Moves_2a_65 = '65+ years') %>% 
@@ -371,7 +374,7 @@ area_flow <- area_inflow %>%
 
 # This is absolute numbers, are the same areas experiencing a higher migration turnover as a proportion of its older population
 
-area_flow %>%
+area_flow_flex <- area_flow %>%
   filter(Age_group %in% c('65-69 years', '70-74 years', '75-79 years', '80-84 years', '85+ years')) %>% 
   group_by(Area_name, Sex) %>% 
   summarise(Inflow = sum(Inflow),
@@ -382,6 +385,8 @@ area_flow %>%
          Migration_turnover = Inflow + Outflow) %>% 
   mutate(Turnover_proportion = paste0(round(Inflow / Population *100, 1), '%')) %>% 
   select(Area_name, Age_group, Inflow, Outflow, Net_migration, Migration_turnover, Sex, Population, Turnover_proportion) %>%   flextable()
+
+area_flow_flex %>% print(., preview = 'docx')
 
 # Gives an idea of the scale we're talking about, new people aged 65+ into the county represent 1.8% of the population of older people in West Sussex; ranging from 1.3% in Crawley to 3% in Chichester.
 
@@ -786,6 +791,50 @@ svg(paste0(output_store, '/OADR_timeseries.svg'),
     pointsize = 12)
 print(oadr_fig)
 dev.off()
+
+
+oadr_fig <- oadr_df %>% 
+  filter(Year %in% c(1991, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030, 2035, 2040, 2043)) %>% 
+  arrange(Year) %>% 
+  ggplot(aes(x = Year,
+             y = OADR,
+             group = Area_name)) +
+  annotate(geom = "rect", xmin = 2022.5, xmax = Inf, ymin = 0, ymax = Inf, fill = "#e7e7e7", alpha = 0.35) +
+  annotate(geom = "text", x = 1992, y = 750, hjust = 0, label = "Estimated", fontface = "bold", size = 5) +
+  annotate(geom = "text", x = 2023, y = 750, hjust = 0, label = "Projected", fontface = "bold", size = 5) +
+  geom_line(aes(colour = Area_type),
+            linewidth = 1) +
+  geom_point(shape = 21,
+             size = 4,
+             aes(colour = Area_type),
+             fill = '#ffffff') +
+  scale_colour_manual(values = c('#dbdbdb', '#1e4b7a', '#4db6c2', 'maroon')) +
+  scale_y_continuous(limits = c(0,800),
+                     breaks = seq(0,800, 100),
+                     expand = c(0,0.01)) +
+  scale_x_continuous(breaks = c(1991, 1995, 2000, 2005, 2010, 2015, 2020, 2025, 2030, 2035, 2040, 2043),
+                     limits = c(1990, 2055),
+                     expand = c(0,0.01)) +
+  labs(x = 'Year',
+       y = 'Number of 65+ year olds per 1,000 people aged 16-64',
+       title = paste0('Old age dependency ratio: West Sussex areas; 1991-2043'),
+       subtitle = 'Age 65+ per 1,000 aged 16-64*',
+       caption =  '*Note: This does not take into account changes in state pension age over time.') +
+  geom_vline(xintercept = 2022.5, lty = "dotted", colour = "#000000", lwd = 1) +
+  geom_dl(data = subset(oadr_df, Year == 2043),
+          aes(y = ifelse(Area_name %in% c('Chichester'), OADR + 15, ifelse(Area_name == 'Adur', OADR - 5, ifelse(Area_name == 'Horsham', OADR + 20, ifelse(Area_name %in% c('Arun', 'Worthing'), OADR - 15, OADR)))),
+              x = 2044,
+              label = paste0(' ', format(round(OADR,0),big.mark = ','), ' - ', Area_name)),
+          method = list(cex = 1, hjust = 0)) + 
+  ph_theme()
+
+png(paste0(output_store, '/OADR_timeseries.png'),
+    width = 1480,
+    height = 800,
+    res = 200)
+print(oadr_fig)
+dev.off()
+
 
 oadr_df %>% 
   filter(Year %in% c(2023, 2033, 2043)) %>% 
